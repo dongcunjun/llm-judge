@@ -30,8 +30,13 @@ const promptForms = {
 const dialogTemplateForm = document.querySelector("#dialogTemplateForm");
 const dialogTemplateSelect = document.querySelector("#dialogTemplateSelect");
 const dialogTemplatePreview = document.querySelector("#dialogTemplatePreview");
+const promptPreviewModal = document.querySelector("#promptPreviewModal");
+const promptPreviewModalTitle = document.querySelector("#promptPreviewModalTitle");
+const promptPreviewModalBody = document.querySelector("#promptPreviewModalBody");
+const closePromptPreviewModalButton = document.querySelector("#closePromptPreviewModal");
 
 let configState = null;
+let activePromptPreviewForm = null;
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -528,8 +533,131 @@ function renderTemplate(template, values) {
   return output;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function renderMarkdown(markdown) {
+  const lines = String(markdown || "").replaceAll("\r\n", "\n").split("\n");
+  const html = [];
+  let inCodeBlock = false;
+  let codeLines = [];
+  let listType = null;
+  let quoteLines = [];
+  let paragraphLines = [];
+
+  function closeParagraph() {
+    if (!paragraphLines.length) return;
+    html.push(`<p>${paragraphLines.map(renderInlineMarkdown).join("<br>")}</p>`);
+    paragraphLines = [];
+  }
+
+  function closeList() {
+    if (!listType) return;
+    html.push(`</${listType}>`);
+    listType = null;
+  }
+
+  function closeQuote() {
+    if (!quoteLines.length) return;
+    html.push(`<blockquote>${quoteLines.map(renderInlineMarkdown).join("<br>")}</blockquote>`);
+    quoteLines = [];
+  }
+
+  function closeBlocks() {
+    closeParagraph();
+    closeQuote();
+    closeList();
+  }
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+        inCodeBlock = false;
+      } else {
+        closeBlocks();
+        inCodeBlock = true;
+      }
+      continue;
+    }
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    if (!line.trim()) {
+      closeBlocks();
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      closeBlocks();
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      closeParagraph();
+      closeList();
+      quoteLines.push(quote[1]);
+      continue;
+    }
+
+    const unordered = line.match(/^\s*[-*]\s+(.+)$/);
+    const ordered = line.match(/^\s*\d+\.\s+(.+)$/);
+    const listItem = unordered || ordered;
+    if (listItem) {
+      closeParagraph();
+      closeQuote();
+      const nextListType = unordered ? "ul" : "ol";
+      if (listType !== nextListType) {
+        closeList();
+        html.push(`<${nextListType}>`);
+        listType = nextListType;
+      }
+      html.push(`<li>${renderInlineMarkdown(listItem[1])}</li>`);
+      continue;
+    }
+
+    closeQuote();
+    closeList();
+    paragraphLines.push(line);
+  }
+
+  if (inCodeBlock) {
+    html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  }
+  closeBlocks();
+  return html.join("");
+}
+
 function updatePromptPreview(form) {
   const preview = form.querySelector(".prompt-preview");
+  const rendered = renderMarkdown(renderTemplate(form.elements.template.value, samplePromptValues(form)));
+  preview.innerHTML = rendered;
+  if (form === activePromptPreviewForm && promptPreviewModalBody) {
+    promptPreviewModalBody.innerHTML = rendered;
+  }
+}
+
+function samplePromptValues(form) {
   const sample = {
     prompt: "输入：玩家继续调查书房",
     input: "输入：玩家继续调查书房",
@@ -543,7 +671,26 @@ function updatePromptPreview(form) {
       sample[placeholder] = `示例 ${sourceField || placeholder}`;
     }
   }
-  preview.textContent = renderTemplate(form.elements.template.value, sample);
+  return sample;
+}
+
+function openPromptPreviewModal(form) {
+  if (!promptPreviewModal || !promptPreviewModalBody || !promptPreviewModalTitle) return;
+  activePromptPreviewForm = form;
+  const target = form.dataset.target;
+  const meta = promptForms[target];
+  promptPreviewModalTitle.textContent = `${meta?.label || "Judge Prompt"} 预览`;
+  promptPreviewModalBody.innerHTML = renderMarkdown(renderTemplate(form.elements.template.value, samplePromptValues(form)));
+  promptPreviewModal.hidden = false;
+  document.body.classList.add("modal-open");
+  closePromptPreviewModalButton?.focus();
+}
+
+function closePromptPreviewModal() {
+  if (!promptPreviewModal || promptPreviewModal.hidden) return;
+  promptPreviewModal.hidden = true;
+  document.body.classList.remove("modal-open");
+  activePromptPreviewForm = null;
 }
 
 function updateDialogTemplatePreview() {
@@ -611,6 +758,10 @@ function wirePromptForm(target) {
       markDirty(meta.form);
       return;
     }
+    if (event.target?.classList?.contains("full-preview-button")) {
+      openPromptPreviewModal(meta.form);
+      return;
+    }
     const action = event.target?.dataset?.action;
     if (action) {
       handlePromptAction(target, action);
@@ -644,6 +795,14 @@ document.querySelectorAll(".reveal-key-input").forEach((button) => {
     input.focus();
     button.textContent = "正在替换";
   });
+});
+
+closePromptPreviewModalButton?.addEventListener("click", closePromptPreviewModal);
+promptPreviewModal?.querySelector("[data-close-full-preview]")?.addEventListener("click", closePromptPreviewModal);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closePromptPreviewModal();
+  }
 });
 
 for (const tab of document.querySelectorAll(".sub-tab")) {

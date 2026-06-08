@@ -112,15 +112,18 @@
                 </div>
               </div>
             </div>
-            <div class="template-preview">
-              <div class="preview-title">预览</div>
-              <pre class="prompt-preview"></pre>
-            </div>
             <div class="version-actions">
               <button type="button" data-action="create">另存为新版本</button>
               <button type="button" data-action="update" class="secondary">更新所选</button>
               <button type="button" data-action="activate" class="secondary">设为正文默认</button>
               <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+            <div class="template-preview">
+              <div class="preview-title preview-title-row">
+                <span>预览</span>
+                <button type="button" class="secondary full-preview-button">全屏预览</button>
+              </div>
+              <div class="prompt-preview markdown-preview"></div>
             </div>
           </fieldset>
         </form>
@@ -175,15 +178,18 @@
                 </div>
               </div>
             </div>
-            <div class="template-preview">
-              <div class="preview-title">预览</div>
-              <pre class="prompt-preview"></pre>
-            </div>
             <div class="version-actions">
               <button type="button" data-action="create">另存为新版本</button>
               <button type="button" data-action="update" class="secondary">更新所选</button>
               <button type="button" data-action="activate" class="secondary">设为选项默认</button>
               <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+            <div class="template-preview">
+              <div class="preview-title preview-title-row">
+                <span>预览</span>
+                <button type="button" class="secondary full-preview-button">全屏预览</button>
+              </div>
+              <div class="prompt-preview markdown-preview"></div>
             </div>
           </fieldset>
         </form>
@@ -231,6 +237,16 @@
       </section>
     </div>
   </main>
+  <div id="promptPreviewModal" class="prompt-preview-modal" hidden>
+    <div class="prompt-preview-backdrop" data-close-full-preview></div>
+    <section class="prompt-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="promptPreviewModalTitle">
+      <header class="prompt-preview-modal-header">
+        <h2 id="promptPreviewModalTitle">Prompt 预览</h2>
+        <button type="button" id="closePromptPreviewModal" class="secondary">关闭</button>
+      </header>
+      <div id="promptPreviewModalBody" class="markdown-preview prompt-preview-fullscreen-body"></div>
+    </section>
+  </div>
   <script src="/static/config.js?v={{ static_version('config.js') }}"></script>
 </body>
 </html>

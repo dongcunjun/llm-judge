@@ -111,6 +111,21 @@
           <span id="batchFileResultCount" class="status-text"></span>
         </div>
       </div>
+      <form id="batchFileVersionFilters" class="detail-filters">
+        <label>Judge API
+          <select name="judge_version_id"><option value="">全部</option></select>
+        </label>
+        <label>正文 Prompt
+          <select name="narrative_judge_prompt_version_id"><option value="">全部</option></select>
+        </label>
+        <label>选项 Prompt
+          <select name="choice_judge_prompt_version_id"><option value="">全部</option></select>
+        </label>
+        <label>对话模版
+          <select name="prompt_combine_version_id"><option value="">全部</option></select>
+        </label>
+        <button id="resetBatchFileVersionFilters" type="button" class="secondary">重置</button>
+      </form>
       <div id="batchFileToolbar" class="result-toolbar" hidden>
         <div id="batchFilePageInfo" class="status-text"></div>
         <div class="pager-actions">
@@ -118,7 +133,21 @@
           <button id="batchFileNextPage" type="button" class="secondary">下一页</button>
         </div>
       </div>
+      <div id="batchCompareBar" class="result-toolbar compare-bar" hidden>
+        <span id="batchCompareCount" class="status-text">已选 0 个批次</span>
+        <div class="pager-actions">
+          <button id="batchCompareBtn" type="button" disabled>比对评分分布</button>
+          <button id="batchCompareClear" type="button" class="secondary">清除选择</button>
+        </div>
+      </div>
       <div id="batchFileList" class="results-list"></div>
+      <div id="batchCompareView" hidden>
+        <div class="result-toolbar">
+          <span class="status-text">最终评分分布比对</span>
+          <button id="batchCompareBack" type="button" class="secondary">返回列表</button>
+        </div>
+        <div id="batchCompareBody"></div>
+      </div>
       <div id="batchFileDetailView" hidden>
         <form id="batchDetailFilters" class="detail-filters">
           <label>类别

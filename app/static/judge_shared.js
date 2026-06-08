@@ -445,6 +445,146 @@ function judgeTargetDisplayLabel(target) {
   return target || "未知";
 }
 
+// ── Multi-job score distribution comparison ─────────────────────
+const COMPARE_PALETTE = [
+  "#3b82f6", "#ef4444", "#22c55e", "#f59e0b",
+  "#a855f7", "#06b6d4", "#ec4899", "#84cc16",
+];
+
+function compareFileLabel(file) {
+  return file.displayFilename || file.filename || shortJobId(file.job_id);
+}
+
+function compareFileMetaRows(file, taskConfigState) {
+  const cfg = taskConfigState || {};
+  const judgeId = lookupVersionId(cfg.judge_versions, file.judge_llm_version_name);
+  const narrativePromptId = lookupVersionId(cfg.narrative_judge_prompt_versions, file.narrative_judge_prompt_version_name || file.judge_prompt_version_name);
+  const choicePromptId = lookupVersionId(cfg.choice_judge_prompt_versions, file.choice_judge_prompt_version_name);
+  const promptCombineId = lookupVersionId(cfg.prompt_combine_versions, file.prompt_combine_version_name);
+  return [
+    ["有效 JSON", String(file.valid_json_count || 0)],
+    ["Judge API", formatVersionIdLabel(judgeId, escapeHtml(file.judge_llm_version_name || "未知版本"), "未知版本")],
+    ["正文 Prompt", formatVersionIdLabel(narrativePromptId, escapeHtml(file.narrative_judge_prompt_version_name || file.judge_prompt_version_name || "未知"), "未知")],
+    ["选项 Prompt", formatVersionIdLabel(choicePromptId, escapeHtml(file.choice_judge_prompt_version_name || "未知"), "未知")],
+    ["对话模版", formatVersionIdLabel(promptCombineId, escapeHtml(file.prompt_combine_version_name || "未知"), "未知")],
+  ];
+}
+
+function renderScoreDistributionComparison(files, taskConfigState) {
+  const usable = (files || []).filter(
+    (file) => Array.isArray(file?.score_breakdown_summary?.score_distribution)
+      && file.score_breakdown_summary.score_distribution.length,
+  );
+  if (usable.length < 2) {
+    return `<div class="empty-state">所选批次中至少需要 2 个包含评分分布的批次才能比对</div>`;
+  }
+
+  // Color each selected file consistently across all target groups.
+  const colorByJob = new Map();
+  usable.forEach((file, index) => {
+    colorByJob.set(file.job_id, COMPARE_PALETTE[index % COMPARE_PALETTE.length]);
+  });
+
+  const legend = `
+    <div class="compare-legend">
+      ${usable.map((file) => `
+        <div class="compare-legend-item">
+          <div class="compare-legend-head">
+            <span class="compare-legend-swatch" style="background:${colorByJob.get(file.job_id)}"></span>
+            <span class="compare-legend-label" title="${escapeHtml(compareFileLabel(file))}">${escapeHtml(compareFileLabel(file))}</span>
+          </div>
+          <dl class="compare-legend-meta">
+            ${compareFileMetaRows(file, taskConfigState).map(([key, value]) => `
+              <div class="compare-legend-meta-row">
+                <dt>${escapeHtml(key)}</dt>
+                <dd title="${escapeHtml(value)}">${value}</dd>
+              </div>
+            `).join("")}
+          </dl>
+        </div>
+      `).join("")}
+    </div>
+  `;
+
+  // Aggregate buckets keyed by target, then by score label.
+  // targetMap: target -> { scoreLabel -> { jobId -> count } }
+  const targetMap = new Map();
+  for (const file of usable) {
+    for (const group of file.score_breakdown_summary.score_distribution) {
+      const target = String(group.target || "unknown");
+      const scoreMap = targetMap.get(target) || new Map();
+      for (const bucket of (group.buckets || [])) {
+        const label = String(bucket.score);
+        const jobCounts = scoreMap.get(label) || new Map();
+        jobCounts.set(file.job_id, (jobCounts.get(file.job_id) || 0) + (Number(bucket.count) || 0));
+        scoreMap.set(label, jobCounts);
+      }
+      targetMap.set(target, scoreMap);
+    }
+  }
+
+  const maxCount = Math.max(
+    1,
+    ...Array.from(targetMap.values()).flatMap((scoreMap) =>
+      Array.from(scoreMap.values()).flatMap((jobCounts) => Array.from(jobCounts.values()))),
+  );
+
+  const targetOrder = {narrative: 0, choice: 1};
+  const targets = Array.from(targetMap.keys()).sort(
+    (a, b) => (targetOrder[a] ?? 99) - (targetOrder[b] ?? 99) || a.localeCompare(b),
+  );
+
+  const groupsHtml = targets.map((target) => {
+    const scoreMap = targetMap.get(target);
+    const scoreLabels = Array.from(scoreMap.keys()).sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      const aNum = Number.isFinite(na);
+      const bNum = Number.isFinite(nb);
+      if (aNum && bNum) return na - nb;
+      if (aNum) return -1;
+      if (bNum) return 1;
+      return a.localeCompare(b);
+    });
+
+    const rows = scoreLabels.map((label) => {
+      const jobCounts = scoreMap.get(label);
+      const bars = usable.map((file) => {
+        const count = Number(jobCounts.get(file.job_id) || 0);
+        const width = Math.max(0, Math.min(100, count / maxCount * 100));
+        return `
+          <div class="compare-bar-row" title="${escapeHtml(compareFileLabel(file))}：${count} 条">
+            <div class="compare-bar-track" aria-hidden="true">
+              <div class="compare-bar" style="width:${width}%;background:${colorByJob.get(file.job_id)}"></div>
+            </div>
+            <div class="compare-bar-count">${count}</div>
+          </div>
+        `;
+      }).join("");
+      return `
+        <div class="compare-score-row">
+          <div class="compare-score-label">${escapeHtml(label)}分</div>
+          <div class="compare-bar-group">${bars}</div>
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="compare-target-group">
+        <div class="compare-target-title">${escapeHtml(judgeTargetDisplayLabel(target))}</div>
+        <div class="compare-score-rows">${rows}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="score-distribution-compare">
+      ${legend}
+      <div class="compare-target-grid">${groupsHtml}</div>
+    </div>
+  `;
+}
+
 function renderJudgeDetailLists(payload) {
   if (!payload || typeof payload !== "object") {
     return "";
@@ -671,10 +811,14 @@ function renderJobErrors(errors) {
 // ── Shared file card rendering (callback-based) ─────────────────
 // callbacks: { deleteJob, cancelJob, exportExcel, showErrors, resumeJob, retryFailures }
 
-function renderFileCard({file, mode, countText, statsHtml, actionText, onClick, onStatClick, isRunning, progressHtml, callbacks, taskConfigState}) {
+function renderFileCard({file, mode, countText, statsHtml, actionText, onClick, onStatClick, isRunning, progressHtml, callbacks, taskConfigState, selectable, selected}) {
   const card = document.createElement("article");
   card.className = `result-card ${mode}-file-card${isRunning ? " running" : ""}`;
   card.dataset.jobId = file.job_id;
+  const canSelect = selectable && !isRunning && Array.isArray(file?.score_breakdown_summary?.score_distribution) && file.score_breakdown_summary.score_distribution.length > 0;
+  const selectCheckboxHtml = canSelect
+    ? `<label class="file-compare-select" title="加入评分分布比对"><input type="checkbox" class="file-compare-checkbox" data-job-id="${escapeHtml(file.job_id)}"${selected ? " checked" : ""}><span>比对</span></label>`
+    : "";
   const isJudgeLike = mode === "llm_judge";
   const detailDisabled = isJudgeLike && !isRunning && Number(file.result_count || 0) === 0;
   const emptyJudgeResult = isJudgeLike && !isRunning && Number(file.result_count || 0) === 0;
@@ -723,6 +867,7 @@ function renderFileCard({file, mode, countText, statsHtml, actionText, onClick, 
     <div class="result-header">
       <div>
         <div class="result-title-row">
+          ${selectCheckboxHtml}
           <span class="title-token playthrough-token">${escapeHtml(file.filename || file.job_id)}</span>
           <span class="title-token turn-pill">${escapeHtml(statusLabel)}</span>
           <span class="title-token bug-count">${escapeHtml(countText)}</span>
@@ -778,6 +923,15 @@ function renderFileCard({file, mode, countText, statsHtml, actionText, onClick, 
       if (callbacks && callbacks.retryFailures) callbacks.retryFailures(file.job_id);
     });
   }
+  const compareCheckbox = card.querySelector(".file-compare-checkbox");
+  if (compareCheckbox) {
+    compareCheckbox.addEventListener("click", (event) => event.stopPropagation());
+    compareCheckbox.addEventListener("change", (event) => {
+      if (callbacks && callbacks.onToggleSelect) {
+        callbacks.onToggleSelect(file.job_id, event.target.checked);
+      }
+    });
+  }
   if (onStatClick) {
     for (const button of card.querySelectorAll("[data-judge-state]")) {
       button.addEventListener("click", (event) => {
@@ -789,7 +943,7 @@ function renderFileCard({file, mode, countText, statsHtml, actionText, onClick, 
   return card;
 }
 
-function renderLlmJudgeFileCard(file, callbacks, taskConfigState) {
+function renderLlmJudgeFileCard(file, callbacks, taskConfigState, selectState) {
   const isRunning = ["pending", "running"].includes(file.status);
   const progressPercent = file.total_rows > 0
     ? Math.round(file.processed_rows / file.total_rows * 100)
@@ -824,5 +978,7 @@ function renderLlmJudgeFileCard(file, callbacks, taskConfigState) {
     },
     callbacks,
     taskConfigState,
+    selectable: Boolean(selectState?.selectable),
+    selected: Boolean(selectState?.selectedIds?.has?.(file.job_id)),
   });
 }

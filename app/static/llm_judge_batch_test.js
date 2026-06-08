@@ -14,6 +14,7 @@ const batchJsonlFile = document.querySelector("#batchJsonlFile");
 
 // ── DOM references: file list ────────────────────────────────────
 const batchFileSortSelect = document.querySelector("#batchFileSortSelect");
+const batchFileVersionFilters = document.querySelector("#batchFileVersionFilters");
 const batchFileResultCount = document.querySelector("#batchFileResultCount");
 const batchFileToolbar = document.querySelector("#batchFileToolbar");
 const batchFileList = document.querySelector("#batchFileList");
@@ -27,12 +28,21 @@ const batchDetailUrlBlock = document.querySelector("#batchDetailUrlBlock");
 const batchDetailResultUrl = document.querySelector("#batchDetailResultUrl");
 const batchDetailSummary = document.querySelector("#batchDetailSummary");
 const batchDetailList = document.querySelector("#batchDetailList");
+const batchCompareBar = document.querySelector("#batchCompareBar");
+const batchCompareCount = document.querySelector("#batchCompareCount");
+const batchCompareBtn = document.querySelector("#batchCompareBtn");
+const batchCompareClear = document.querySelector("#batchCompareClear");
+const batchCompareView = document.querySelector("#batchCompareView");
+const batchCompareBody = document.querySelector("#batchCompareBody");
+const batchCompareBack = document.querySelector("#batchCompareBack");
 
 let latestJobId = "";
 let resultsPageSize = 20;
 let selectedBatchJobId = null;
 let batchDetailPage = 1;
 let batchFileRefreshTimer = null;
+let batchFilesCache = [];
+const selectedCompareJobIds = new Set();
 
 const BATCH_DEFAULTS_KEY = "batch_test_defaults";
 const VERSION_SELECT_NAMES = [
@@ -95,8 +105,38 @@ async function loadConfigAndPopulateSelects() {
     markActiveOption("narrative_judge_prompt_version_id", config.active_narrative_judge_prompt_id);
     markActiveOption("choice_judge_prompt_version_id", config.active_choice_judge_prompt_id);
     markActiveOption("prompt_combine_version_id", config.active_prompt_combine_id);
+
+    populateVersionFilterSelects(config);
   } catch (error) {
     console.error("加载版本列表失败:", error);
+  }
+}
+
+// Version filter dropdowns on the 裁判结果 list. Each option carries the
+// version *name* as its value, since batch files store version names (not ids).
+const VERSION_FILTER_CONFIG = [
+  {name: "judge_version_id", configKey: "judge_versions"},
+  {name: "narrative_judge_prompt_version_id", configKey: "narrative_judge_prompt_versions"},
+  {name: "choice_judge_prompt_version_id", configKey: "choice_judge_prompt_versions"},
+  {name: "prompt_combine_version_id", configKey: "prompt_combine_versions"},
+];
+
+function populateVersionFilterSelects(config) {
+  if (!batchFileVersionFilters) return;
+  for (const {name, configKey} of VERSION_FILTER_CONFIG) {
+    const select = batchFileVersionFilters.elements[name];
+    if (!select) continue;
+    const previous = select.value;
+    const versions = config[configKey] || [];
+    select.innerHTML = '<option value="">全部</option>';
+    for (const version of versions) {
+      const option = document.createElement("option");
+      // Value is the version name so it matches batch file version fields.
+      option.value = version.name;
+      option.textContent = `[ID: ${version.id}] ${version.name}`;
+      select.append(option);
+    }
+    select.value = previous;
   }
 }
 
@@ -203,12 +243,52 @@ async function loadBatchFiles() {
   showBatchFileLoading();
   try {
     const files = await batchFetchJson(`/api/llm-judge/files?source=batch&sort_by=${sortBy}`);
-    batchFileResultCount.textContent = `${files.length} 个批次`;
-    renderBatchFileList(files);
+    batchFilesCache = files;
+    renderBatchFileList(applyVersionFilters(files));
   } catch (error) {
     batchFileResultCount.textContent = error.message;
     batchFileList.innerHTML = `<div class="empty-state">${escapeHtml(error.message)}</div>`;
   }
+}
+
+// Filter the cached batch files by the selected version dropdowns. Matching is
+// by version *name* because batch files persist version names, not ids.
+function batchFileVersionFilterValues() {
+  const values = {};
+  if (!batchFileVersionFilters) return values;
+  const form = new FormData(batchFileVersionFilters);
+  for (const {name} of VERSION_FILTER_CONFIG) {
+    const value = String(form.get(name) || "").trim();
+    if (value) values[name] = value;
+  }
+  return values;
+}
+
+function applyVersionFilters(files) {
+  const filters = batchFileVersionFilterValues();
+  if (!Object.keys(filters).length) return files;
+  return files.filter((file) => {
+    if (filters.judge_version_id && file.judge_llm_version_name !== filters.judge_version_id) {
+      return false;
+    }
+    if (filters.narrative_judge_prompt_version_id) {
+      const narrativeName = file.narrative_judge_prompt_version_name || file.judge_prompt_version_name;
+      if (narrativeName !== filters.narrative_judge_prompt_version_id) return false;
+    }
+    if (filters.choice_judge_prompt_version_id
+        && file.choice_judge_prompt_version_name !== filters.choice_judge_prompt_version_id) {
+      return false;
+    }
+    if (filters.prompt_combine_version_id
+        && file.prompt_combine_version_name !== filters.prompt_combine_version_id) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function reapplyVersionFilters() {
+  renderBatchFileList(applyVersionFilters(batchFilesCache));
 }
 
 function showBatchFileLoading() {
@@ -229,25 +309,90 @@ function batchFileCallbacks() {
     resumeJob: (jobId, button) => resumeBatchJob(jobId, button),
     retryFailures: (jobId) => retryBatchFailures(jobId),
     onSelectFile: (file) => selectBatchFile(file),
+    onToggleSelect: (jobId, checked) => toggleCompareSelection(jobId, checked),
   };
 }
 
 function renderBatchFileList(files) {
   batchFileList.innerHTML = "";
   syncBatchFileRefreshTimer(files);
+  const hasFilters = Object.keys(batchFileVersionFilterValues()).length > 0;
+  const totalCount = batchFilesCache.length;
+  batchFileResultCount.textContent = hasFilters
+    ? `${files.length} / ${totalCount} 个批次`
+    : `${files.length} 个批次`;
   if (!files.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
-    empty.textContent = "暂无批次记录";
+    empty.textContent = hasFilters ? "没有匹配筛选条件的批次" : "暂无批次记录";
     batchFileList.append(empty);
+    pruneCompareSelection(files);
     return;
   }
   const callbacks = batchFileCallbacks();
+  const selectState = {selectable: true, selectedIds: selectedCompareJobIds};
   for (const file of files) {
     // Show created_at as display name since all batch jobs have source_filename="batch"
     file.displayFilename = `Batch ${formatDate(file.created_at)}`;
-    batchFileList.append(renderLlmJudgeFileCard(file, callbacks, batchConfigState));
+    batchFileList.append(renderLlmJudgeFileCard(file, callbacks, batchConfigState, selectState));
   }
+  pruneCompareSelection(files);
+}
+
+// ── Score distribution comparison ────────────────────────────────
+function comparableJobIds(files) {
+  return new Set(
+    (files || [])
+      .filter((file) => Array.isArray(file?.score_breakdown_summary?.score_distribution)
+        && file.score_breakdown_summary.score_distribution.length)
+      .map((file) => file.job_id),
+  );
+}
+
+function pruneCompareSelection(files) {
+  const valid = comparableJobIds(files);
+  for (const jobId of Array.from(selectedCompareJobIds)) {
+    if (!valid.has(jobId)) selectedCompareJobIds.delete(jobId);
+  }
+  updateCompareBar();
+}
+
+function toggleCompareSelection(jobId, checked) {
+  if (checked) {
+    selectedCompareJobIds.add(jobId);
+  } else {
+    selectedCompareJobIds.delete(jobId);
+  }
+  updateCompareBar();
+}
+
+function updateCompareBar() {
+  if (!batchCompareBar) return;
+  const count = selectedCompareJobIds.size;
+  const inListView = !selectedBatchJobId && (batchCompareView?.hidden ?? true);
+  batchCompareBar.hidden = !inListView || count === 0;
+  if (batchCompareCount) batchCompareCount.textContent = `已选 ${count} 个批次`;
+  if (batchCompareBtn) batchCompareBtn.disabled = count < 2;
+}
+
+function showCompareView() {
+  const files = batchFilesCache.filter((file) => selectedCompareJobIds.has(file.job_id));
+  if (files.length < 2) return;
+  batchCompareBody.innerHTML = renderScoreDistributionComparison(files, batchConfigState);
+  batchFileList.hidden = true;
+  if (batchFileToolbar) batchFileToolbar.hidden = true;
+  if (batchFileVersionFilters) batchFileVersionFilters.hidden = true;
+  batchCompareBar.hidden = true;
+  batchFileResultCount.parentElement.style.display = "none";
+  batchCompareView.hidden = false;
+}
+
+function backFromCompareView() {
+  batchCompareView.hidden = true;
+  batchFileList.hidden = false;
+  if (batchFileVersionFilters) batchFileVersionFilters.hidden = false;
+  batchFileResultCount.parentElement.style.display = "";
+  updateCompareBar();
 }
 
 function syncBatchFileRefreshTimer(files) {
@@ -328,6 +473,7 @@ function selectBatchFile(file) {
   // Hide file list area (not the entire panel)
   batchFileList.hidden = true;
   batchFileToolbar.hidden = true;
+  if (batchCompareBar) batchCompareBar.hidden = true;
   batchFileResultCount.parentElement.style.display = "none";
   // Show detail view
   batchFileDetailView.hidden = false;
@@ -692,6 +838,31 @@ document.querySelector("#refreshBatchJob").addEventListener("click", async () =>
 // ── Event listeners: file list ──────────────────────────────────
 if (batchFileSortSelect) {
   batchFileSortSelect.addEventListener("change", () => loadBatchFiles());
+}
+
+if (batchCompareBtn) {
+  batchCompareBtn.addEventListener("click", showCompareView);
+}
+if (batchCompareClear) {
+  batchCompareClear.addEventListener("click", () => {
+    selectedCompareJobIds.clear();
+    for (const checkbox of batchFileList.querySelectorAll(".file-compare-checkbox")) {
+      checkbox.checked = false;
+    }
+    updateCompareBar();
+  });
+}
+if (batchCompareBack) {
+  batchCompareBack.addEventListener("click", backFromCompareView);
+}
+
+if (batchFileVersionFilters) {
+  // Filter the already-fetched list client-side; no refetch needed.
+  batchFileVersionFilters.addEventListener("change", reapplyVersionFilters);
+  document.querySelector("#resetBatchFileVersionFilters")?.addEventListener("click", () => {
+    batchFileVersionFilters.reset();
+    reapplyVersionFilters();
+  });
 }
 
 if (batchDetailFilters) {
