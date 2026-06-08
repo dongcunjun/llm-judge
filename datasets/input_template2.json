@@ -1,0 +1,42 @@
+[
+  {
+    "narrative": {
+      "input": {
+        "system": "你是一个视觉交互式小说游戏的剧情师...",
+        "messages": [
+          {
+            "role": "user",
+            "content": "开始模拟..."
+          },
+          {
+            "role": "assistant",
+            "content": "<div data-kind=\"scratch\">...</div>"
+          },
+          {
+            "role": "user",
+            "content": "玩家选项..."
+          }
+        ]
+      },
+      "output": "<div data-kind=\"scratch\">...</div>\n\n<p>正文输出的 HTML 内容...</p>"
+    },
+    "choice": {
+      "input": {
+        "system": "你是一个视觉交互式小说游戏的剧情师...",
+        "messages": []
+      },
+      "output": {
+        "options": [
+          {
+            "text": "选项1",
+            "reason": "推进剧情"
+          },
+          {
+            "text": "选项2",
+            "reason": "推进剧情"
+          }
+        ]
+      }
+    }
+  }
+]
