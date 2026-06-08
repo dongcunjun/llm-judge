@@ -311,6 +311,31 @@ fieldset .two-cols {
   grid-column: 1 / -1;
 }
 
+.template-group {
+  margin-top: 16px;
+  background: rgba(47, 111, 237, 0.03);
+}
+
+.template-group > legend {
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.template-group-hint {
+  margin: 0 0 12px;
+  color: #667085;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.template-group-hint code {
+  background: rgba(16, 24, 40, 0.06);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
 .actions {
   display: flex;
   justify-content: flex-end;

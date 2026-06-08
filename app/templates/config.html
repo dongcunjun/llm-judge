@@ -207,21 +207,31 @@
             <legend>版本管理</legend>
             <label>版本<select id="dialogTemplateSelect"></select></label>
             <label>版本名称<input name="name" placeholder="例如：默认对话 prompt 模版"></label>
-            <label>System 模板
-              <textarea name="system_template" rows="3"></textarea>
-            </label>
-            <label>User 模板
-              <textarea name="user_template" rows="3"></textarea>
-            </label>
-            <label>Assistant 模板
-              <textarea name="assistant_template" rows="3"></textarea>
-            </label>
-            <label>剧情拼接格式
-              <textarea name="narrative_output_template" rows="3" placeholder="{{text}}"></textarea>
-            </label>
-            <label>选项拼接格式
-              <textarea name="choice_option_template" rows="3" placeholder="{{index}}. {{text}}（{{reason}}）"></textarea>
-            </label>
+
+            <fieldset class="template-group">
+              <legend>对话模板</legend>
+              <p class="template-group-hint">用于 <code>input</code> 字段内容拼接：把 input 的对话对象（system / messages）拼成一句 prompt。</p>
+              <label>System 模板
+                <textarea name="system_template" rows="3"></textarea>
+              </label>
+              <label>User 模板
+                <textarea name="user_template" rows="3"></textarea>
+              </label>
+              <label>Assistant 模板
+                <textarea name="assistant_template" rows="3"></textarea>
+              </label>
+            </fieldset>
+
+            <fieldset class="template-group">
+              <legend>narrative / choice 模板</legend>
+              <p class="template-group-hint">用于 <code>output</code> 字段内容拼接：narrative 用「剧情拼接格式」，choice 用「选项拼接格式」。</p>
+              <label>剧情拼接格式（narrative output）
+                <textarea name="narrative_output_template" rows="3" placeholder="{{text}}"></textarea>
+              </label>
+              <label>选项拼接格式（choice output）
+                <textarea name="choice_option_template" rows="3" placeholder="{{index}}. {{text}}（{{reason}}）"></textarea>
+              </label>
+            </fieldset>
             <div class="template-preview">
               <div class="preview-title">预览</div>
               <pre id="dialogTemplatePreview"></pre>

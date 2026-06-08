@@ -107,7 +107,9 @@ def _validate_llm_judge_payloads(
         raise JsonlParseError(f"第 {line_number} 行必须是 JSON 对象")
 
     playthrough_id, turn = _validate_identity_payload(payload, line_number)
-    section_items = _llm_judge_section_items(payload, line_number, prompt_combine_templates)
+    section_items = _llm_judge_section_items(
+        payload, line_number, prompt_combine_templates, judge_prompts
+    )
     if section_items:
         return [
             _build_llm_judge_item(
@@ -121,22 +123,85 @@ def _validate_llm_judge_payloads(
             for target, section_payload in section_items
         ]
 
+    flat_target = str(payload.get("judge_target") or payload.get("target") or "")
+    judge_prompt = judge_prompts.get(flat_target) or judge_prompts[""]
+    payload = _format_flat_input(payload, prompt_combine_templates, line_number)
+    payload = _format_flat_output(payload, prompt_combine_templates, flat_target)
     return [
         _build_llm_judge_item(
             payload=payload,
             line_number=line_number,
             playthrough_id=playthrough_id,
             turn=turn,
-            judge_prompt=judge_prompts[""],
-            judge_target=str(payload.get("judge_target") or payload.get("target") or ""),
+            judge_prompt=judge_prompt,
+            judge_target=flat_target,
         )
     ]
+
+
+def _format_flat_input(
+    payload: dict[str, Any],
+    templates: PromptCombineTemplates,
+    line_number: int,
+) -> dict[str, Any]:
+    """Render a flat-style item's dict input via the prompt-combine templates.
+
+    Section-style items run ``narrative.input`` / ``choice.input`` through
+    ``_llm_judge_input_to_text`` (which expands a ``{system, messages}`` dict into
+    combined dialog text) before reaching ``_build_llm_judge_item``.  Flat items are
+    formatted here so a dict input becomes the same dialog text instead of being
+    JSON-serialised.  Only the explicit top-level ``input`` key is formatted, and
+    only when its value is a dict — other mapped fields are passed through.
+    """
+    input_key = "input"
+    if input_key not in payload or not isinstance(payload[input_key], dict):
+        return payload
+    formatted = _llm_judge_input_to_text(
+        payload[input_key],
+        line_number=line_number,
+        field_name=input_key,
+        templates=templates,
+    )
+    payload = dict(payload)
+    payload[input_key] = formatted
+    return payload
+
+
+def _format_flat_output(
+    payload: dict[str, Any],
+    templates: PromptCombineTemplates,
+    flat_target: str,
+) -> dict[str, Any]:
+    """Render a flat-style item's output via the prompt-combine templates.
+
+    Section-style items run their output through ``_llm_judge_output_to_text`` in
+    ``_llm_judge_section_items`` before reaching ``_build_llm_judge_item`` — choice
+    output via ``choice_option_template`` and narrative output via
+    ``narrative_output_template``.  Flat items are formatted here so both paths
+    agree.  A ``choice`` target uses the choice template; any other target
+    (including the empty default that maps to the narrative prompt) uses the
+    narrative template.  Only the explicit top-level ``output`` key is formatted —
+    other mapped fields (e.g. ``meta``) are passed through untouched.
+    """
+    output_target = "choice" if flat_target == "choice" else "narrative"
+    output_key = "output"
+    if output_key not in payload or payload[output_key] is None:
+        return payload
+    formatted = _llm_judge_output_to_text(
+        payload[output_key],
+        target=output_target,
+        templates=templates,
+    )
+    payload = dict(payload)
+    payload[output_key] = formatted
+    return payload
 
 
 def _llm_judge_section_items(
     payload: dict[str, Any],
     line_number: int,
     prompt_combine_templates: PromptCombineTemplates,
+    judge_prompts: dict[str, JudgePromptVersion],
 ) -> list[tuple[str, dict[str, Any]]]:
     sections: list[tuple[str, dict[str, Any]]] = []
     has_section_key = any(key in payload for key in ("narrative", "choice"))
@@ -146,40 +211,52 @@ def _llm_judge_section_items(
             continue
         if not isinstance(section, dict):
             raise JsonlParseError(f"第 {line_number} 行 {target} 必须是对象")
-        input_text = section.get("input")
-        output_text = section.get("output")
-        if input_text is None and output_text is None:
+        judge_prompt = judge_prompts.get(target) or judge_prompts[""]
+        if not judge_prompt.fields:
+            # No placeholder mapping configured for this target — nothing to take
+            # from the section, so skip it.
             continue
-        input_text = _llm_judge_input_to_text(
-            input_text,
-            line_number=line_number,
-            field_name=f"{target}.input",
-            templates=prompt_combine_templates,
-        )
-        if output_text is None:
-            raise JsonlParseError(f"第 {line_number} 行 {target}.output 不能为 null")
-        output_text = _llm_judge_output_to_text(
-            output_text,
-            target=target,
-            templates=prompt_combine_templates,
-        )
-        if not input_text.strip() and not output_text.strip():
-            continue
-        sections.append(
-            (
-                target,
-                {
-                    target: {
-                        **section,
-                        "input": input_text,
-                        "output": output_text,
-                    },
-                    "input": input_text,
-                    "prompt": input_text,
-                    "output": output_text,
-                },
-            )
-        )
+
+        # Section keys now follow the placeholder mapping: each mapped
+        # ``source_field`` is read from the section dict, validated as non-empty,
+        # formatted, and flattened to the top level so _build_llm_judge_item can
+        # take it by source_field.  ``input`` keeps its dialog-template semantics
+        # and ``output`` its narrative/choice-template semantics; any other field
+        # (including ``prompt``) is taken verbatim.
+        flat: dict[str, Any] = {}
+        for field in judge_prompt.fields:
+            source_field = field.source_field
+            if source_field not in section:
+                raise JsonlParseError(
+                    f"第 {line_number} 行 {target}.{source_field} 缺失"
+                )
+            value = section[source_field]
+            if value is None:
+                raise JsonlParseError(
+                    f"第 {line_number} 行 {target}.{source_field} 不能为空"
+                )
+            if source_field == "input":
+                formatted = _llm_judge_input_to_text(
+                    value,
+                    line_number=line_number,
+                    field_name=f"{target}.{source_field}",
+                    templates=prompt_combine_templates,
+                )
+            elif source_field == "output":
+                formatted = _llm_judge_output_to_text(
+                    value,
+                    target=target,
+                    templates=prompt_combine_templates,
+                )
+            else:
+                formatted = _value_to_text(value)
+            if not formatted.strip():
+                raise JsonlParseError(
+                    f"第 {line_number} 行 {target}.{source_field} 不能为空"
+                )
+            flat[source_field] = formatted
+
+        sections.append((target, {target: {**section, **flat}, **flat}))
     if has_section_key and not sections:
         raise JsonlParseError(f"第 {line_number} 行 narrative 或 choice 至少一个不能为空")
     return sections

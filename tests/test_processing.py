@@ -169,7 +169,7 @@ async def test_process_llm_judge_job_saves_target_input_and_output(tmp_path: Pat
         name="p",
         template="P={{prompt}}\nO={{output}}",
         fields=[
-            JudgePromptField(placeholder="prompt", source_field="prompt"),
+            JudgePromptField(placeholder="prompt", source_field="input"),
             JudgePromptField(placeholder="output", source_field="output"),
         ],
         is_active=True,

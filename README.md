@@ -102,9 +102,44 @@ LLM_JUDGE_UPLOAD_PROMPT_COMBINE_VERSION_ID=1
 | `playthrough_id` | string | （可选）剧情/回放 ID，缺省为 `""` |
 | `turn` | int | （可选）轮次编号，缺省为 `0` |
 
-每条记录**必须**包含 `narrative` 和/或 `choice` 分段。裁判内容通过 `narrative`（正文）和/或 `choice`（选项）分段提供。每个分段包含 `input` 和 `output`。
+裁判内容支持两种结构：**分段式**（section）和**扁平式**（flat）。
 
-| 分段字段 | 类型 | 说明 |
+### 分段式（section）
+
+每条记录包含 `narrative`（正文）和/或 `choice`（选项）分段，每个分段是一个对象。系统会按对应 target 的 Judge Prompt 分别裁判。
+
+```json
+{
+  "narrative": {"input": "...", "output": "..."},
+  "choice": {"input": "...", "output": "..."}
+}
+```
+
+**分段内部的键名跟随该 target 的 Judge Prompt 占位符映射配置**（`fields` 中的 `source_field`）。也就是说，分段里需要哪些键，由 Judge Prompt 的字段映射决定，而非写死。其中：
+
+- `source_field == "input"` 的字段：值为 dict（含 `system` + `messages`）时按拼接模版渲染为对话 prompt，字符串则原样使用。
+- `source_field == "output"` 的字段：按 target 走输出拼接模版（narrative 用 `narrative_output_template`，choice 用 `choice_option_template`）。
+- 其余 `source_field`：原样取值填入占位符。
+
+常用约定即 `input` / `output` 两个键（见下方 input/output 格式说明）。
+
+### 扁平式（flat）
+
+记录顶层直接放 `input` / `output`，通过 `target`（或 `judge_target`）字段指定裁判类型：
+
+```json
+{"input": "...", "output": "...", "target": "choice"}
+```
+
+- `target` 为 `choice` → 路由到选项 Judge Prompt，`output` 走选项拼接模版。
+- `target` 为 `narrative` 或缺省 → 路由到正文 Judge Prompt，`output` 走剧情拼接模版。
+- `input` 为 dict 时同样走对话拼接模版渲染。
+
+> 分段式与扁平式行为一致：按 target 选择 Judge Prompt、`input` 走对话模版、`output` 走 narrative/choice 模版。
+
+### input / output 字段
+
+| 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | string 或 dict | 模型输入（prompt），见下方格式说明 |
 | `output` | string 或 dict | 模型输出，正文为 HTML 字符串，选项为 `{"options": [...]}` 对象 |
@@ -137,9 +172,10 @@ LLM_JUDGE_UPLOAD_PROMPT_COMBINE_VERSION_ID=1
 
 ### 记录拆分规则
 
-- 一个 record 同时包含 `narrative` 和 `choice` → 拆成 2 个 judge item
+- 一个 record 同时包含 `narrative` 和 `choice` 分段 → 拆成 2 个 judge item（各用对应 target 的 Judge Prompt）
 - 只包含其中一个分段 → 只生成 1 个 judge item
-- `choice.input` 为空但 `choice.output` 不为空 → 复用 `narrative.input` 作为 `choice.input`
+- 扁平式记录（无分段）→ 生成 1 个 judge item，target 由顶层 `target` / `judge_target` 决定
+- 某分段对应的 Judge Prompt 未配置任何字段映射（`fields` 为空）→ 跳过该分段
 
 ### 输入校验规则
 
@@ -151,7 +187,8 @@ LLM_JUDGE_UPLOAD_PROMPT_COMBINE_VERSION_ID=1
 | `playthrough_id` 存在时必须为字符串 | `第 N 行 playthrough_id 必须是字符串` |
 | `turn` 存在时必须为整数 | `第 N 行 turn 必须是整数` |
 | `narrative` / `choice` 分段必须是对象 | `第 N 行 {target} 必须是对象` |
-| 分段的 `output` 不能为 null | `第 N 行 {target}.output 不能为 null` |
+| 分段中映射的字段必须存在 | `第 N 行 {target}.{source_field} 缺失` |
+| 分段中映射的字段不能为 null 或空白 | `第 N 行 {target}.{source_field} 不能为空` |
 | 分段的 `input` 必须是字符串或对象 | `第 N 行 {field_name} 必须是字符串或对象` |
 | 字典格式 input 的 `system` 必须是字符串 | `第 N 行 {field_name}.system 必须是字符串` |
 | 字典格式 input 的 `messages` 必须是数组 | `第 N 行 {field_name}.messages 必须是数组` |
@@ -159,13 +196,15 @@ LLM_JUDGE_UPLOAD_PROMPT_COMBINE_VERSION_ID=1
 | 同时有 `narrative` 和 `choice` 分段时至少一个不能为空 | `第 N 行 narrative 或 choice 至少一个不能为空` |
 | 记录中无任何可处理数据 | `文件中没有可处理的数据` |
 
+> 分段中"映射的字段"指该 target 的 Judge Prompt `fields` 里配置的每个 `source_field`。校验要求它们在分段里存在、非 null、且字符串化并 `strip()` 后非空。
+
 ---
 
 ## 提交裁判
 
 `POST /api/llm-judge/batch` 接收 JSON 数组，立即返回任务信息，后台异步执行裁判。
 
-### 字典格式请求
+### 分段式请求（input 为对话字典）
 
 ```bash
 curl -X POST 'http://127.0.0.1:8322/api/llm-judge/batch' \
@@ -199,7 +238,7 @@ curl -X POST 'http://127.0.0.1:8322/api/llm-judge/batch' \
   ]'
 ```
 
-### 扁平格式请求
+### 分段式请求（input 为字符串）
 
 ```bash
 curl -X POST 'http://127.0.0.1:8322/api/llm-judge/batch' \
@@ -215,6 +254,19 @@ curl -X POST 'http://127.0.0.1:8322/api/llm-judge/batch' \
         "output": "《当前的选项》"
       }
     }
+  ]'
+```
+
+### 扁平式请求（无分段，顶层字段 + target）
+
+记录顶层直接放 `input` / `output`，用 `target` 指定裁判类型（缺省为正文）。详见"输入格式 → 扁平式（flat）"。
+
+```bash
+curl -X POST 'http://127.0.0.1:8322/api/llm-judge/batch' \
+  -H 'Content-Type: application/json' \
+  -d '[
+    {"input": "《生成正文的prompt》", "output": "《当前的剧情》", "target": "narrative"},
+    {"input": "《生成选项的prompt》", "output": {"options": [{"text": "选项1", "reason": "推进剧情"}]}, "target": "choice"}
   ]'
 ```
 
@@ -344,7 +396,10 @@ curl -X POST 'http://127.0.0.1:8322/api/llm-judge/upload' \
 
 ## Prompt 拼接模板
 
-当 input 为**字典格式**（含 `system` + `messages`）时，系统使用拼接模板将对话渲染为 prompt 文本。
+拼接模板分两组，对应配置页"对话 prompt 模版"中的两个分区：
+
+- **对话模板**（`system_template` / `user_template` / `assistant_template`）：用于 `input` 字段内容拼接。当 input 为**字典格式**（含 `system` + `messages`）时，把对话渲染为 prompt 文本。
+- **narrative / choice 模板**（`narrative_output_template` / `choice_option_template`）：用于 `output` 字段内容拼接。narrative 用剧情拼接格式，choice 用选项拼接格式。
 
 ### 默认模板
 
@@ -725,7 +780,15 @@ curl -X DELETE 'http://127.0.0.1:8322/api/config/judge-prompts/{target}/{version
 
 `target` 必须是 `narrative` 或 `choice`，传其他值返回 400 `Judge Prompt 类型无效`。
 
-`fields` 中的 `placeholder` 对应模板里的 `{{变量名}}`，`source_field` 指定从输入数据的哪个字段取值。
+`fields` 中的 `placeholder` 对应模板里的 `{{变量名}}`，`source_field` 指定从输入数据（分段式则为分段内部、扁平式则为记录顶层）的哪个字段取值。
+
+`source_field` 的取值会按字段名做不同处理：
+
+- `input`：值为 dict 时走对话模板渲染，字符串原样。
+- `output`：按 target 走 narrative/choice 输出拼接模板。
+- 其他名字：原样取值填入占位符。
+
+> 因此分段式记录里需要哪些键，完全由这里的 `source_field` 决定；分段内部不再写死 `input` / `output`。
 
 ### Prompt 拼接模版版本管理
 
