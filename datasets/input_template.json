@@ -1,6 +1,4 @@
 {
-    "playthrough_id": "abc123",
-    "turn": 5,
     "narrative": {
         "input": "《生成正文的prompt》",
         "output": "《当前的剧情》"

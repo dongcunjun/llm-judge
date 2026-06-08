@@ -20,7 +20,6 @@ judge_system.db
 uploads/
 datasets/playthrough_*.jsonl
 datasets/input_test.jsonl
-datasets/result_*.json
 
 # IDE
 .claude/
