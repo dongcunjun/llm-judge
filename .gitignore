@@ -18,7 +18,6 @@ judge_system.db
 
 # Local data / artifacts
 uploads/
-datasets/playthrough_*.jsonl
 
 # IDE
 .claude/
