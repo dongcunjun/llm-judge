@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Judge llm response 配置</title>
+  <link rel="stylesheet" href="/static/styles.css?v={{ static_version('styles.css') }}">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Judge llm response 配置</h1>
+        <p>管理上传裁判需要的裁判 LLM API、Judge Prompt 和对话 prompt 模版。</p>
+      </div>
+      <nav class="tab-bar">
+
+        <a class="tab" href="/llm-judge/batch-test">Batch API 测试</a>
+        <a class="tab active" href="/config">配置</a>
+      </nav>
+    </header>
+
+    <nav class="sub-tab-bar">
+      <a class="sub-tab active" data-section="judge-api">裁判 LLM API</a>
+      <a class="sub-tab" data-section="narrative-prompt">正文 Judge Prompt</a>
+      <a class="sub-tab" data-section="choice-prompt">选项 Judge Prompt</a>
+      <a class="sub-tab" data-section="dialog-template">对话 prompt 模版</a>
+    </nav>
+
+    <div id="judgeApiSection" class="config-section">
+      <section class="panel config-panel">
+        <div class="section-title">
+          <h2>裁判 LLM API</h2>
+          <span id="configStatus" class="status-text"></span>
+        </div>
+        <form id="judgeForm" class="version-form">
+          <fieldset>
+            <legend>版本管理</legend>
+            <label>版本<select id="judgeSelect"></select></label>
+            <label>版本名称<input name="name" placeholder="例如：严格裁判模型"></label>
+            <label>Base URL<input name="base_url" placeholder="https://api.example.com/v1"></label>
+            <label>API Key
+              <span class="api-key-row">
+                <input name="api_key" type="password" autocomplete="off" placeholder="留空保留当前密钥">
+                <button type="button" class="secondary reveal-key-input">替换</button>
+              </span>
+              <span class="api-key-hint"></span>
+            </label>
+            <label>Model<input name="model" placeholder="gpt-4o-mini"></label>
+            <label>Timeout 秒<input name="timeout" type="number" min="1" step="1"></label>
+            <label class="checkbox-label">思考模式<input name="thinking" type="checkbox"></label>
+            <label class="checkbox-label">强制 JSON-only 解码模式<input name="force_json_only" type="checkbox"></label>
+            <label>Temperature<input name="temperature" type="number" min="0" max="2" step="0.1" placeholder="留空使用默认值"></label>
+            <label>Top K<input name="top_k" type="number" min="1" max="100" step="1" placeholder="留空使用默认值"></label>
+            <label>Top P<input name="top_p" type="number" min="0" max="1" step="0.1" placeholder="留空使用默认值"></label>
+            <div class="version-actions">
+              <button type="button" data-action="create">另存为新版本</button>
+              <button type="button" data-action="update" class="secondary">更新所选</button>
+              <button type="button" data-action="activate" class="secondary">设为默认</button>
+              <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    </div>
+
+    <div id="narrativePromptSection" class="config-section" hidden>
+      <section class="panel">
+        <div class="section-title">
+          <h2>正文 Judge Prompt</h2>
+          <span class="status-text">用于裁判 narrative 输出。</span>
+        </div>
+        <form id="narrativePromptForm" class="version-form template-version-form prompt-version-form" data-target="narrative">
+          <fieldset>
+            <legend>版本管理</legend>
+            <label>版本<select id="narrativePromptSelect"></select></label>
+            <label>版本名称<input name="name" placeholder="例如：正文质量裁判 Prompt"></label>
+            <label>模板内容
+              <textarea name="template" rows="10"></textarea>
+            </label>
+            <div class="template-field">
+              <div class="field-row-header">
+                <span>占位符映射</span>
+                <button type="button" class="secondary add-prompt-field">新增字段</button>
+              </div>
+              <div class="field-mapping-list"></div>
+            </div>
+            <div class="score-config-field">
+              <div class="field-row-header">
+                <span>得分计算</span>
+              </div>
+              <div class="score-config-body">
+                <label>计算模式
+                  <select name="score_mode">
+                    <option value="default">默认（读取 overall_score / overall_evidence）</option>
+                    <option value="direct">指定路径（direct）</option>
+                    <option value="weighted">加权综合（weighted）</option>
+                  </select>
+                </label>
+                <label class="score-evidence-row">证据字段路径
+                  <input name="evidence_path" placeholder="overall_evidence">
+                </label>
+                <label class="score-direct-row">分数字段路径
+                  <input name="score_path" placeholder="overall_score">
+                </label>
+                <div class="score-weighted-row">
+                  <div class="field-row-header">
+                    <span>加权 components（weights 不为 1 时自动归一化）</span>
+                    <button type="button" class="secondary add-score-component">新增 component</button>
+                  </div>
+                  <div class="score-component-list"></div>
+                </div>
+              </div>
+            </div>
+            <div class="template-preview">
+              <div class="preview-title">预览</div>
+              <pre class="prompt-preview"></pre>
+            </div>
+            <div class="version-actions">
+              <button type="button" data-action="create">另存为新版本</button>
+              <button type="button" data-action="update" class="secondary">更新所选</button>
+              <button type="button" data-action="activate" class="secondary">设为正文默认</button>
+              <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    </div>
+
+    <div id="choicePromptSection" class="config-section" hidden>
+      <section class="panel">
+        <div class="section-title">
+          <h2>选项 Judge Prompt</h2>
+          <span class="status-text">用于裁判 choice 输出。</span>
+        </div>
+        <form id="choicePromptForm" class="version-form template-version-form prompt-version-form" data-target="choice">
+          <fieldset>
+            <legend>版本管理</legend>
+            <label>版本<select id="choicePromptSelect"></select></label>
+            <label>版本名称<input name="name" placeholder="例如：选项质量裁判 Prompt"></label>
+            <label>模板内容
+              <textarea name="template" rows="10"></textarea>
+            </label>
+            <div class="template-field">
+              <div class="field-row-header">
+                <span>占位符映射</span>
+                <button type="button" class="secondary add-prompt-field">新增字段</button>
+              </div>
+              <div class="field-mapping-list"></div>
+            </div>
+            <div class="score-config-field">
+              <div class="field-row-header">
+                <span>得分计算</span>
+              </div>
+              <div class="score-config-body">
+                <label>计算模式
+                  <select name="score_mode">
+                    <option value="default">默认（读取 overall_score / overall_evidence）</option>
+                    <option value="direct">指定路径（direct）</option>
+                    <option value="weighted">加权综合（weighted）</option>
+                  </select>
+                </label>
+                <label class="score-evidence-row">证据字段路径
+                  <input name="evidence_path" placeholder="overall_evidence">
+                </label>
+                <label class="score-direct-row">分数字段路径
+                  <input name="score_path" placeholder="overall_score">
+                </label>
+                <div class="score-weighted-row">
+                  <div class="field-row-header">
+                    <span>加权 components（weights 不为 1 时自动归一化）</span>
+                    <button type="button" class="secondary add-score-component">新增 component</button>
+                  </div>
+                  <div class="score-component-list"></div>
+                </div>
+              </div>
+            </div>
+            <div class="template-preview">
+              <div class="preview-title">预览</div>
+              <pre class="prompt-preview"></pre>
+            </div>
+            <div class="version-actions">
+              <button type="button" data-action="create">另存为新版本</button>
+              <button type="button" data-action="update" class="secondary">更新所选</button>
+              <button type="button" data-action="activate" class="secondary">设为选项默认</button>
+              <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    </div>
+
+    <div id="dialogTemplateSection" class="config-section" hidden>
+      <section class="panel">
+        <div class="section-title">
+          <h2>对话 prompt 模版</h2>
+          <span class="status-text">用于把 narrative.input / choice.input 的对话对象拼成一句 prompt。</span>
+        </div>
+        <form id="dialogTemplateForm" class="version-form template-version-form">
+          <fieldset>
+            <legend>版本管理</legend>
+            <label>版本<select id="dialogTemplateSelect"></select></label>
+            <label>版本名称<input name="name" placeholder="例如：默认对话 prompt 模版"></label>
+            <label>System 模板
+              <textarea name="system_template" rows="3"></textarea>
+            </label>
+            <label>User 模板
+              <textarea name="user_template" rows="3"></textarea>
+            </label>
+            <label>Assistant 模板
+              <textarea name="assistant_template" rows="3"></textarea>
+            </label>
+            <label>剧情拼接格式
+              <textarea name="narrative_output_template" rows="3" placeholder="{{text}}"></textarea>
+            </label>
+            <label>选项拼接格式
+              <textarea name="choice_option_template" rows="3" placeholder="{{index}}. {{text}}（{{reason}}）"></textarea>
+            </label>
+            <div class="template-preview">
+              <div class="preview-title">预览</div>
+              <pre id="dialogTemplatePreview"></pre>
+            </div>
+            <div class="version-actions">
+              <button type="button" data-action="create">另存为新版本</button>
+              <button type="button" data-action="update" class="secondary">更新所选</button>
+              <button type="button" data-action="activate" class="secondary">设为默认</button>
+              <button type="button" data-action="delete" class="secondary delete-version-btn">删除所选</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+    </div>
+  </main>
+  <script src="/static/config.js?v={{ static_version('config.js') }}"></script>
+</body>
+</html>

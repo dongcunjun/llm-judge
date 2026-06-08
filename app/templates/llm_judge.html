@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Judge llm response - 裁判系统</title>
+  <link rel="stylesheet" href="/static/styles.css?v={{ static_version('styles.css') }}">
+</head>
+<body data-mode="llm-judged" data-upload-endpoint="/api/llm-judge/upload">
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Judge llm response（已废弃）</h1>
+        <p>旧版上传裁判页；没有明确指令时请使用 Batch API 测试页。</p>
+      </div>
+      <nav class="tab-bar">
+        <a class="tab active" href="/llm-judge">Judge llm response</a>
+        <a class="tab" href="/llm-judge/batch-test">Batch API 测试</a>
+        <a class="tab" href="/config">配置</a>
+      </nav>
+    </header>
+
+    <section class="deprecated-notice" aria-label="页面废弃提示">
+      <strong>此页面已废弃。</strong>
+      <span>后续裁判任务和进度刷新请优先维护 <a href="/llm-judge/batch-test">Batch API 测试</a> 页面；没有明确指令不要修改本页。</span>
+    </section>
+
+    <form id="concurrencyForm" class="concurrency-form">
+      <label>后台并发
+        <input id="judgeConcurrency" name="judge_concurrency" type="number" min="1" max="500" step="1" value="50">
+      </label>
+      <button type="submit" class="secondary">保存</button>
+      <span id="concurrencyStatus" class="status-text"></span>
+    </form>
+
+    <section class="panel upload-panel">
+      <div class="section-title">
+        <h2>Judge llm response 任务</h2>
+        <span id="uploadStatus" class="status-text"></span>
+      </div>
+      <form id="uploadForm" class="upload-form llm-judge-upload-form">
+        <label class="task-version-field">裁判 LLM API
+          <select id="judgeVersionSelect" name="judge_version_id"></select>
+        </label>
+        <label class="task-version-field">正文 Judge Prompt
+          <select id="narrativeJudgePromptVersionSelect" name="narrative_judge_prompt_version_id"></select>
+        </label>
+        <label class="task-version-field">选项 Judge Prompt
+          <select id="choiceJudgePromptVersionSelect" name="choice_judge_prompt_version_id"></select>
+        </label>
+        <label class="task-version-field">对话 prompt 模版
+          <select id="promptCombineVersionSelect" name="prompt_combine_version_id"></select>
+        </label>
+        <button type="button" class="secondary set-defaults-btn" data-selects="judgeVersionSelect,narrativeJudgePromptVersionSelect,choiceJudgePromptVersionSelect,promptCombineVersionSelect" data-endpoints="/api/config/judge/{id}/activate,/api/config/judge-prompts/{id}/activate/narrative,/api/config/judge-prompts/{id}/activate/choice,/api/config/prompt-combine/{id}/activate">设为默认</button>
+        <label class="task-source-field file-source-field">选择文件
+          <input id="jsonlFile" name="file" type="file" accept=".jsonl">
+        </label>
+        <button type="submit">裁判</button>
+      </form>
+      <div id="jobProgress" class="job-progress" hidden>
+        <div class="progress-line">
+          <span id="jobId"></span>
+          <strong id="jobState"></strong>
+          <button id="stopJobButton" type="button" class="danger" hidden>停止</button>
+        </div>
+        <progress id="progressBar" value="0" max="1"></progress>
+        <pre id="jobErrors"></pre>
+      </div>
+    </section>
+
+    <section class="panel results-panel">
+      <div class="section-title">
+        <h2>裁判结果</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">排序
+            <select id="fileSortSelect" style="width:auto;">
+              <option value="created">时间降序</option>
+              <option value="exists">有效 JSON 数降序</option>
+            </select>
+          </label>
+          <span id="resultCount" class="status-text"></span>
+        </div>
+      </div>
+      <form id="filterForm" class="filters">
+        <label data-filter-field="filename"><input name="source_filename" placeholder="输入文件名关键词"></label>
+        <button type="submit">筛选</button>
+      </form>
+      <div id="resultToolbar" class="result-toolbar" hidden>
+        <div id="pageInfo" class="status-text"></div>
+        <div class="pager-actions">
+          <button id="prevPage" type="button" class="secondary">上一页</button>
+          <button id="nextPage" type="button" class="secondary">下一页</button>
+        </div>
+      </div>
+      <div id="resultsList" class="results-list"></div>
+    </section>
+  </main>
+  <script src="/static/judge_shared.js?v={{ static_version('judge_shared.js') }}"></script>
+  <script src="/static/app.js?v={{ static_version('app.js') }}"></script>
+</body>
+</html>

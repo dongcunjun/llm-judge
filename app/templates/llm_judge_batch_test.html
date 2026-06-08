@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Batch API 测试 - 裁判系统</title>
+  <link rel="stylesheet" href="/static/styles.css?v={{ static_version('styles.css') }}">
+</head>
+<body data-mode="batch-test">
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Batch API 测试</h1>
+        <p>灵活构造 POST /api/llm-judge/batch 请求并查看响应。</p>
+      </div>
+      <nav class="tab-bar">
+
+        <a class="tab active" href="/llm-judge/batch-test">Batch API 测试</a>
+        <a class="tab" href="/config">配置</a>
+      </nav>
+    </header>
+
+    <section class="panel batch-test-panel">
+      <div class="section-title">
+        <h2>Query 参数</h2>
+        <span class="status-text">留空时使用接口默认值</span>
+      </div>
+      <form id="batchTestForm">
+        <div class="batch-params-grid">
+          <label>judge_version_id 裁判LLM配置版本
+            <select name="judge_version_id"></select>
+          </label>
+          <label>narrative_judge_prompt_version_id 正文裁判提示词版本
+            <select name="narrative_judge_prompt_version_id"></select>
+          </label>
+          <label>choice_judge_prompt_version_id 选项裁判提示词版本
+            <select name="choice_judge_prompt_version_id"></select>
+          </label>
+          <label>prompt_combine_version_id 提示词组合模版版本
+            <select name="prompt_combine_version_id"></select>
+          </label>
+          <label>concurrency 并发数
+            <input name="concurrency" type="number" min="1" max="500" placeholder="默认50">
+          </label>
+          <label>judge_retry_count Judge重试次数
+            <input name="judge_retry_count" type="number" min="0" max="10" placeholder="默认2">
+          </label>
+        </div>
+
+        <div class="batch-body-field">
+          <div class="batch-body-header">
+            <label for="batchRequestBody">JSON body</label>
+            <label class="jsonl-upload-label">
+              从 JSONL 文件导入
+              <input id="batchJsonlFile" type="file" accept=".jsonl,.jsonlines" hidden>
+            </label>
+          </div>
+          <textarea id="batchRequestBody" name="records" rows="18" spellcheck="false"></textarea>
+        </div>
+
+        <div class="batch-request-preview">
+          <span class="preview-title">请求 URL</span>
+          <code id="batchRequestUrl"></code>
+        </div>
+        <div class="batch-test-actions">
+          <button id="formatBatchBody" type="button" class="secondary">格式化 JSON</button>
+          <button id="resetBatchBody" type="button" class="secondary">恢复示例</button>
+          <button id="saveBatchDefaults" type="button" class="secondary">设为默认</button>
+          <button id="submitBatchRequest" type="submit">发送请求</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel batch-response-panel">
+      <div class="section-title">
+        <h2>响应</h2>
+        <span id="batchResponseStatus" class="status-text">尚未发送请求</span>
+      </div>
+      <div class="batch-request-preview">
+        <span class="preview-title">请求 URL</span>
+        <code id="batchSubmitUrl"></code>
+      </div>
+      <pre id="batchResponseBody" class="batch-response-body">等待请求...</pre>
+      <div id="batchJobStatusSection" class="batch-job-status" hidden>
+        <div class="section-title">
+          <h2>任务状态</h2>
+          <button id="refreshBatchJob" type="button" class="secondary">刷新</button>
+        </div>
+        <div class="batch-request-preview">
+          <span class="preview-title">请求 URL</span>
+          <code id="batchJobStatusUrl"></code>
+        </div>
+        <div id="batchJobVersionInfo" class="batch-version-info" hidden>
+          <span class="preview-title">使用版本</span>
+          <div id="batchJobVersionIds" class="batch-version-list"></div>
+        </div>
+        <pre id="batchJobStatusBody" class="batch-response-body"></pre>
+      </div>
+    </section>
+
+    <section class="panel results-panel">
+      <div class="section-title">
+        <h2>裁判结果</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;">排序
+            <select id="batchFileSortSelect" style="width:auto;">
+              <option value="created">时间降序</option>
+              <option value="exists">有效 JSON 数降序</option>
+            </select>
+          </label>
+          <span id="batchFileResultCount" class="status-text"></span>
+        </div>
+      </div>
+      <div id="batchFileToolbar" class="result-toolbar" hidden>
+        <div id="batchFilePageInfo" class="status-text"></div>
+        <div class="pager-actions">
+          <button id="batchFilePrevPage" type="button" class="secondary">上一页</button>
+          <button id="batchFileNextPage" type="button" class="secondary">下一页</button>
+        </div>
+      </div>
+      <div id="batchFileList" class="results-list"></div>
+      <div id="batchFileDetailView" hidden>
+        <form id="batchDetailFilters" class="detail-filters">
+          <label>类别
+            <select name="judge_target">
+              <option value="">全部</option>
+              <option value="narrative">叙事</option>
+              <option value="choice">选项</option>
+            </select>
+          </label>
+          <label>分数
+            <input name="score" type="number" step="any" placeholder="全部">
+          </label>
+          <label>分数排序
+            <select name="score_sort">
+              <option value="">默认</option>
+              <option value="asc">正序</option>
+              <option value="desc">倒序</option>
+            </select>
+          </label>
+          <button type="submit">应用</button>
+          <button id="resetBatchDetailFilters" type="button" class="secondary">重置</button>
+        </form>
+        <div id="batchDetailToolbar" class="result-toolbar">
+          <div id="batchDetailPageInfo" class="status-text"></div>
+          <div class="pager-actions">
+            <button id="batchDetailPrevPage" type="button" class="secondary">上一页</button>
+            <button id="batchDetailNextPage" type="button" class="secondary">下一页</button>
+          </div>
+        </div>
+        <div class="batch-request-preview" id="batchDetailUrlBlock" hidden>
+          <span class="preview-title">请求 URL</span>
+          <code id="batchDetailResultUrl"></code>
+        </div>
+        <div id="batchDetailSummary" class="batch-results-summary"></div>
+        <div id="batchDetailList" class="results-list"></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/judge_shared.js?v={{ static_version('judge_shared.js') }}"></script>
+  <script src="/static/llm_judge_batch_test.js?v={{ static_version('llm_judge_batch_test.js') }}"></script>
+</body>
+</html>

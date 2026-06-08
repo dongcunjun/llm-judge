@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Database (large local file)
+*.db
+judge_system.db
+
+# OS
+.DS_Store
+
+# Local data / artifacts
+uploads/
+datasets/playthrough_*.jsonl
+datasets/input_test.jsonl
+datasets/result_*.json
+
+# IDE
+.claude/

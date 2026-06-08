@@ -1,0 +1,13 @@
+{
+    "playthrough_id": "abc123",
+    "turn": 5,
+    "narrative": {
+        "input": "《生成正文的prompt》",
+        "output": "《当前的剧情》"
+    },
+    "choice": {
+        "type": "《是否是generateChoices LLM》",
+        "input": "《生成选项的prompt》",
+        "output": "《当前的选项》"
+    }
+}
