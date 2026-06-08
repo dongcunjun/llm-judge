@@ -474,6 +474,7 @@ function selectBatchFile(file) {
   batchFileList.hidden = true;
   batchFileToolbar.hidden = true;
   if (batchCompareBar) batchCompareBar.hidden = true;
+  if (batchFileVersionFilters) batchFileVersionFilters.hidden = true;
   batchFileResultCount.parentElement.style.display = "none";
   // Show detail view
   batchFileDetailView.hidden = false;
@@ -487,6 +488,7 @@ function backToBatchFileList() {
   // Restore file list area
   batchFileList.hidden = false;
   batchFileToolbar.hidden = false;
+  if (batchFileVersionFilters) batchFileVersionFilters.hidden = false;
   batchFileResultCount.parentElement.style.display = "";
   // Hide detail view
   batchFileDetailView.hidden = true;
